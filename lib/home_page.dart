@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:snake_game/blank_pixel.dart';
 import 'package:snake_game/food_pixel.dart';
@@ -20,7 +21,9 @@ class _HomePageState extends State<HomePage> {
   int rowSize = 10;
   int totalNumberOfSquares = 100;
 
+  // game settings
   bool gameHasStarted = false;
+  final _nameController = TextEditingController();
 
   // user score
   int currentScore = 0;
@@ -37,6 +40,31 @@ class _HomePageState extends State<HomePage> {
 
   // food position
   int foodPos = 55;
+
+  // highscore list
+  List<String> highScoreDocIds = [];
+  late final Future? letsGetDocIds;
+
+  @override
+  void initState() {
+    letsGetDocIds = getDocId();
+    super.initState();
+  }
+
+  Future getDocId() async {
+    await FirebaseFirestore.instance
+        .collection("high_scores")
+        .orderBy("score", descending: true)
+        .limit(10)
+        .get()
+        .then(
+          (value) => value.docs.forEach(
+            (element) {
+              highScoreDocIds.add(element.reference.id);
+            },
+          ),
+        );
+  }
 
   // start the game
   void startGame() {
@@ -60,18 +88,19 @@ class _HomePageState extends State<HomePage> {
                 content: Column(
                   children: [
                     Text("Your score is: $currentScore"),
-                    const TextField(
-                      decoration: InputDecoration(
+                    TextField(
+                      decoration: const InputDecoration(
                         hintText: "Enter Name",
                       ),
+                      controller: _nameController,
                     )
                   ],
                 ),
                 actions: [
                   MaterialButton(
-                    onPressed: () {
+                    onPressed: () async {
                       Navigator.of(context).pop();
-                      submitScore();
+                      await submitScore();
                       newGame();
                     },
                     color: Colors.pink,
@@ -86,7 +115,16 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void submitScore() {}
+  Future<void> submitScore() async {
+    // get access to the database
+    var database = FirebaseFirestore.instance;
+
+    // add data to firebase
+    await database.collection("high_scores").add({
+      "name": _nameController.text,
+      "score": currentScore,
+    });
+  }
 
   void newGame() {
     setState(() {
@@ -189,6 +227,7 @@ class _HomePageState extends State<HomePage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
+                // user current score
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -199,10 +238,21 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                 ),
-                // user current score
 
                 // high scores, top 5 or top 10
-                const Text("highscores..."),
+                Expanded(
+                  child: FutureBuilder(
+                    future: letsGetDocIds,
+                    builder: (context, snapshot) {
+                      return ListView.builder(
+                        itemCount: highScoreDocIds.length,
+                        itemBuilder: (context, index) {
+                          return Text(highScoreDocIds[index]);
+                        },
+                      );
+                    },
+                  ),
+                )
               ],
             ),
           ),
