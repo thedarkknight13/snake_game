@@ -3,8 +3,10 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:snake_game/blank_pixel.dart';
 import 'package:snake_game/food_pixel.dart';
+import 'package:snake_game/highscore_tile.dart';
 import 'package:snake_game/snake_pixel.dart';
 
 class HomePage extends StatefulWidget {
@@ -17,6 +19,7 @@ class HomePage extends StatefulWidget {
 enum SnakeDirection { up, down, right, left }
 
 class _HomePageState extends State<HomePage> {
+  final FocusNode _focusNode = FocusNode();
   // grid dimensions
   int rowSize = 10;
   int totalNumberOfSquares = 100;
@@ -126,7 +129,9 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void newGame() {
+  Future newGame() async {
+    highScoreDocIds = [];
+    await getDocId();
     setState(() {
       snakePos = [
         0,
@@ -220,94 +225,123 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Column(
-        children: [
-          // high score
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                // user current score
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text("Current Score"),
-                    Text(
-                      "$currentScore",
-                      style: const TextStyle(fontSize: 36),
+      body: KeyboardListener(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: (event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.arrowDown &&
+              currentDirection != SnakeDirection.up) {
+            currentDirection = SnakeDirection.down;
+          } else if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.arrowUp &&
+              currentDirection != SnakeDirection.down) {
+            currentDirection = SnakeDirection.up;
+          } else if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+              currentDirection != SnakeDirection.right) {
+            currentDirection = SnakeDirection.left;
+          } else if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.arrowRight &&
+              currentDirection != SnakeDirection.left) {
+            currentDirection = SnakeDirection.right;
+          }
+        },
+        child: Column(
+          children: [
+            // high score
+            Expanded(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  // user current score
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text("Current Score"),
+                        Text(
+                          "$currentScore",
+                          style: const TextStyle(fontSize: 36),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-
-                // high scores, top 5 or top 10
-                Expanded(
-                  child: FutureBuilder(
-                    future: letsGetDocIds,
-                    builder: (context, snapshot) {
-                      return ListView.builder(
-                        itemCount: highScoreDocIds.length,
-                        itemBuilder: (context, index) {
-                          return Text(highScoreDocIds[index]);
-                        },
-                      );
-                    },
                   ),
-                )
-              ],
-            ),
-          ),
 
-          // game grid
-          Expanded(
-            flex: 3,
-            child: GestureDetector(
-              onVerticalDragUpdate: (details) {
-                if (details.delta.dy > 0 &&
-                    currentDirection != SnakeDirection.up) {
-                  currentDirection = SnakeDirection.down;
-                } else if (details.delta.dy < 0 &&
-                    currentDirection != SnakeDirection.down) {
-                  currentDirection = SnakeDirection.up;
-                }
-              },
-              onHorizontalDragUpdate: (details) {
-                if (details.delta.dx > 0 &&
-                    currentDirection != SnakeDirection.left) {
-                  currentDirection = SnakeDirection.right;
-                } else if (details.delta.dx < 0 &&
-                    currentDirection != SnakeDirection.right) {
-                  currentDirection = SnakeDirection.left;
-                }
-              },
-              child: GridView.builder(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: rowSize,
-                ),
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: totalNumberOfSquares,
-                itemBuilder: (context, index) {
-                  if (snakePos.contains(index)) {
-                    return const SnakePixel();
-                  } else if (foodPos == index) {
-                    return const FoodPixel();
+                  // high scores, top 5 or top 10
+                  Expanded(
+                    child: gameHasStarted
+                        ? Container()
+                        : FutureBuilder(
+                            future: letsGetDocIds,
+                            builder: (context, snapshot) {
+                              return ListView.builder(
+                                itemCount: highScoreDocIds.length,
+                                itemBuilder: (context, index) {
+                                  return HighscoreTile(
+                                    documentId: highScoreDocIds[index],
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                  )
+                ],
+              ),
+            ),
+
+            // game grid
+            Expanded(
+              flex: 3,
+              child: GestureDetector(
+                onVerticalDragUpdate: (details) {
+                  if (details.delta.dy > 0 &&
+                      currentDirection != SnakeDirection.up) {
+                    currentDirection = SnakeDirection.down;
+                  } else if (details.delta.dy < 0 &&
+                      currentDirection != SnakeDirection.down) {
+                    currentDirection = SnakeDirection.up;
                   }
-                  return const BlankPixel();
                 },
+                onHorizontalDragUpdate: (details) {
+                  if (details.delta.dx > 0 &&
+                      currentDirection != SnakeDirection.left) {
+                    currentDirection = SnakeDirection.right;
+                  } else if (details.delta.dx < 0 &&
+                      currentDirection != SnakeDirection.right) {
+                    currentDirection = SnakeDirection.left;
+                  }
+                },
+                child: GridView.builder(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: rowSize,
+                  ),
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: totalNumberOfSquares,
+                  itemBuilder: (context, index) {
+                    if (snakePos.contains(index)) {
+                      return const SnakePixel();
+                    } else if (foodPos == index) {
+                      return const FoodPixel();
+                    }
+                    return const BlankPixel();
+                  },
+                ),
               ),
             ),
-          ),
 
-          // play button
-          Expanded(
-            child: Center(
-              child: MaterialButton(
-                color: gameHasStarted ? Colors.grey : Colors.pink,
-                onPressed: gameHasStarted ? () {} : startGame,
-                child: const Text("PLAY"),
+            // play button
+            Expanded(
+              child: Center(
+                child: MaterialButton(
+                  color: gameHasStarted ? Colors.grey : Colors.pink,
+                  onPressed: gameHasStarted ? () {} : startGame,
+                  child: const Text("PLAY"),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
